@@ -1,7 +1,5 @@
 #include "SplitFlapModule.h"
 
-// Array of characters, in order, the first item is located on the magnet on the
-// character drum
 const char SplitFlapModule::StandardChars[37] = {' ', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L',
                                                  'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y',
                                                  'Z', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'};
@@ -12,137 +10,66 @@ const char SplitFlapModule::ExtendedChars[48] = {
     '5', '6', '7', '8', '9', '\'', ':', '?', '!', '.', '-', '/', '$', '@', '#', '%',
 };
 
-bool hasErrored = false;
-
 // Default Constructor
 SplitFlapModule::SplitFlapModule()
-    : address(0), position(0), stepNumber(0), stepsPerRot(0), chars(StandardChars), numChars(37), charSetSize(37) {
-    magnetPosition = 710;
-}
+    : position(0), stepNumber(0), stepsPerRot(0), magnetPosition(0), numChars(0), charSetSize(0) {}
 
-// Constructor implementation
-SplitFlapModule::SplitFlapModule(
-    uint8_t I2Caddress, int stepsPerFullRotation, int stepOffset, int magnetPos, int charsetSize
-)
-    : address(I2Caddress), position(0), stepNumber(0), stepsPerRot(stepsPerFullRotation), charSetSize(charsetSize) {
-    magnetPosition = magnetPos + stepOffset;
+// Parameterized Constructor
+SplitFlapModule::SplitFlapModule(int stepsPerFullRotation, int stepOffset, int magnetPos, int charSetSize)
+    : stepsPerRot(stepsPerFullRotation), charSetSize(charSetSize) {
+    
+    magnetPosition = (magnetPos + stepOffset) % stepsPerRot;
+    if (magnetPosition < 0) magnetPosition += stepsPerRot;
+    position = magnetPosition;
 
-    chars = (charsetSize == 48) ? ExtendedChars : StandardChars;
-    numChars = (charsetSize == 48) ? 48 : 37;
-}
-
-void SplitFlapModule::writeIO(uint16_t data) {
-    Wire.beginTransmission(address);
-    Wire.write(data & 0xFF);        // Send lower byte
-    Wire.write((data >> 8) & 0xFF); // Send upper byte
-
-    byte error = Wire.endTransmission();
-
-    if (error > 0 && ! hasErrored) {
-        hasErrored = true; // Set the error flag
-        Serial.print("Error writing data to module ");
-        Serial.print(address);
-        Serial.print(", error code: ");
-        Serial.println(error); // Error codes:
-        // 0 = success
-        // 1 = data too long to fit in transmit buffer
-        // 2 = received NACK on transmit of address
-        // 3 = received NACK on transmit of data
-        // 4 = other error
+    if (charSetSize == 37) {
+        chars = StandardChars;
+        numChars = 37;
+    } else {
+        chars = ExtendedChars;
+        numChars = 48;
     }
 }
 
-// Init Module, Setup IO Board
 void SplitFlapModule::init() {
-    float stepSize = (float) stepsPerRot / (float) numChars;
-    float currentPosition = 0;
     for (int i = 0; i < numChars; i++) {
-        charPositions[i] = (int) currentPosition;
-        currentPosition += stepSize;
+        charPositions[i] = (i * stepsPerRot) / numChars;
     }
-
-    uint16_t initState = 0b1111111111100001; // Pin 15 (17) as INPUT, Pins 1-4 as OUTPUT
-    writeIO(initState);
-
-    stop();                                  // Write all motor coil inputs LOW
-
-    int initDelay = 100;
-
-    delay(initDelay);
-    step();
-    delay(initDelay);
-    step();
-    delay(initDelay);
-    step();
-    delay(initDelay);
-    step();
-    delay(initDelay);
-
     stop();
 }
 
 int SplitFlapModule::getCharPosition(char inputChar) {
-    inputChar = toupper(inputChar);
-    for (int i = 0; i < charSetSize; i++) {
-        if (chars[i] == inputChar) {
-            return charPositions[i];
-        }
+    for (int i = 0; i < numChars; i++) {
+        if (chars[i] == inputChar) return charPositions[i];
     }
-    return 0; // Character not found, return blank
+    return charPositions[0]; // default to space
 }
 
 void SplitFlapModule::stop() {
-    uint16_t stepState = 0b1111111111100001;
-    writeIO(stepState);
+    currentMotorState = 0x00; // All outputs LOW
 }
 
 void SplitFlapModule::start() {
     stepNumber = (stepNumber + 3) % 4; // effectively take one off stepNumber
-    step(false);                       // write the "previous" step high again, in case turned off
+    step(false);                       
 }
 
 void SplitFlapModule::step(bool updatePosition) {
-    uint16_t stepState;
+    // Stepping mapping for QA=IN4, QB=IN3, QC=IN2, QD=IN1
     switch (stepNumber) {
-        case 0:
-            stepState = 0b1111111111100111;
-            writeIO(stepState);
-            break;
-        case 1:
-            stepState = 0b1111111111110011;
-            writeIO(stepState);
-            break;
-        case 2:
-            stepState = 0b1111111111111001;
-            writeIO(stepState);
-            break;
-        case 3:
-            stepState = 0b1111111111101101;
-            writeIO(stepState);
-            break;
+        case 0: currentMotorState = 0x0C; break; // 0b00001100
+        case 1: currentMotorState = 0x06; break; // 0b00000110
+        case 2: currentMotorState = 0x03; break; // 0b00000011
+        case 3: currentMotorState = 0x09; break; // 0b00001001
     }
+    
     if (updatePosition) {
         position = (position + 1) % stepsPerRot;
         stepNumber = (stepNumber + 1) % 4;
     }
 }
 
-bool SplitFlapModule::readHallEffectSensor() {
-    if (hasErrored) {
-        return false;
-    }
-
-    uint8_t requestBytes = 2;
-    Wire.requestFrom(address, requestBytes);
-    // Make sure the data is available
-    if (Wire.available() == 2) {
-        uint16_t inputState = 0;
-
-        // Read the two bytes and combine them into a 16-bit value
-        inputState = Wire.read();             // Read the lower byte
-        inputState |= (Wire.read() << 8);     // Read the upper byte and shift it left
-
-        return (inputState & (1 << 15)) != 0; // If bit is 15, return HIGH, else LOW
-    }
-    return false;
+bool SplitFlapModule::isMagnetDetected(uint8_t inputByte) {
+    // Check bit 0 (D0 on the 74HC165). Assuming active LOW.
+    return (inputByte & 0x01) == 0; 
 }

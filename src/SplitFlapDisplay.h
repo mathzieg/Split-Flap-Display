@@ -4,6 +4,7 @@
 #include "SplitFlapModule.h"
 
 #include <Arduino.h>
+#include <SPI.h>
 
 #define MAX_MODULES 8 // for memory allocation, update if more modules
 #define MAX_RPM 15.0f
@@ -58,4 +59,14 @@ class SplitFlapDisplay {
     int SCLPin;         // SCL pin
 
     SplitFlapMqtt *mqtt = nullptr;
+
+    uint8_t sr_inputs[MAX_MODULES];
+
+    // Standard ESP32 SPI uses: MOSI=23, MISO=19, SCK=18. 
+    // Set your latch pins here:
+    int latchOutPin = 5;  // RCLK for 74HC595 (Outputs)
+    int latchInPin = 17;  // PL for 74HC165 (Inputs)
+
+    void updateShiftRegisters();
+    void readShiftRegisters();
 };

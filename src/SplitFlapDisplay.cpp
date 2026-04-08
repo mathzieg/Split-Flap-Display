@@ -7,17 +7,19 @@
 SplitFlapDisplay::SplitFlapDisplay(JsonSettings &settings) : settings(settings) {}
 
 void SplitFlapDisplay::init() {
+    // --- SPI SETUP ---
+    pinMode(latchOutPin, OUTPUT);
+    pinMode(latchInPin, OUTPUT);
+    digitalWrite(latchOutPin, HIGH);
+    digitalWrite(latchInPin, HIGH);
+    SPI.begin(); // Starts hardware SPI on pins 23, 19, 18
+
     numModules = settings.getInt("moduleCount");
     stepsPerRot = settings.getInt("stepsPerRot");
     displayOffset = settings.getInt("displayOffset");
     magnetPosition = settings.getInt("magnetPosition");
     maxVel = settings.getFloat("maxVel");
     charSetSize = settings.getInt("charset");
-
-    std::vector<int> settingAddresses = settings.getIntVector("moduleAddresses");
-    for (int i = 0; i < numModules; i++) {
-        moduleAddresses[i] = (uint8_t) settingAddresses[i];
-    }
 
     std::vector<int> settingOffsets = settings.getIntVector("moduleOffsets");
     for (int i = 0; i < numModules; i++) {
@@ -32,16 +34,13 @@ void SplitFlapDisplay::init() {
     Serial.println();
 
     for (uint8_t i = 0; i < numModules; i++) {
+        // FIX: Removed 'moduleAddresses[i]' since SPI daisy-chains don't use individual addresses
         modules[i] = SplitFlapModule(
-            moduleAddresses[i], stepsPerRot, moduleOffsets[i] + displayOffset, magnetPosition, charSetSize
+            stepsPerRot, moduleOffsets[i] + displayOffset, magnetPosition, charSetSize
         );
     }
 
-    SDAPin = settings.getInt("sdaPin");
-    SCLPin = settings.getInt("sclPin");
-
-    Wire.begin(SDAPin, SCLPin);
-    Wire.setClock(400000);
+    // FIX: Removed the Wire.begin() I2C setup, it is no longer needed!
 
     for (uint8_t i = 0; i < numModules; i++) {
         modules[i].init();
@@ -237,44 +236,46 @@ void SplitFlapDisplay::moveTo(int targetPositions[], float speed, bool releaseMo
         }
     }
 
-    startMotors(); // not sure if this helps or not, likely that it does not based
-    // on testing
-    delay(startStopDelay); // give the motor time to align to magnetic field
+    startMotors(); 
+    updateShiftRegisters(); // <-- NEW: Push the initial coil activation states to the 595s
+    delay(startStopDelay);  // give the motor time to align to magnetic field
 
     bool isFinished = checkAllFalse(needsStepping, numModules);
     while (! isFinished) {
         currentTime = micros();
+        bool didAnyStep = false; // <-- NEW: Track if we need to push data via SPI
+
         for (int i = 0; i < numModules; i++) {
             if (((currentTime - lastStepTimes[i]) > timePerStep) && needsStepping[i]) {
                 modules[i].step();
                 lastStepTimes[i] = micros();
-                if (modules[i].getPosition() == targetPositions[i]) { // this module is not in the correct position,
-                    // requires stepping
+                didAnyStep = true; // <-- NEW: Flag that motor state memory was updated
+
+                if (modules[i].getPosition() == targetPositions[i]) { 
+                    // this module is not in the correct position, requires stepping
                     needsStepping[i] = false;
                 }
             }
         }
 
+        // <-- NEW: If any motor stepped in memory, push the new states to the 595s
+        if (didAnyStep) {
+            updateShiftRegisters();
+        }
+
         if ((currentTime - lastSensorCheckTime) > checkIntervalUs) { // check hall effect sensor every checkIntervalMs
+            
+            // <-- NEW: Read all 74HC165 inputs at once
+            readShiftRegisters();
+
             // check every modules sensor
             for (int i = 0; i < numModules; i++) {
-                if (needsStepping[i] &&
-                    (modules[i].readHallEffectSensor() == true
-                    )) { // only check sensors where the module is still moving
+                
+                // <-- NEW: Pass the pre-read SPI byte to the module instead of doing an I2C read
+                if (needsStepping[i] && modules[i].isMagnetDetected(sr_inputs[i])) { 
+                    
                     if (! resetLatches[i]) {
-                        // UNCOMMENTING THIS WILL PROBBALY MAKE THE MOTORS INACCURATE, DUE
-                        // TO TIME TAKEN TO PRINT
-                        //  Serial.print("Module: ");
-                        //  Serial.print(i);
-                        //  Serial.print(" Magnet Position: ");
-                        //  Serial.print(modules[i].getMagnetPosition());
-                        //  Serial.print(" Actual Position: ");
-                        //  Serial.print(modules[i].getPosition());
-                        //  Serial.print(" Error: ");
-                        //  Serial.println((modules[i].getMagnetPosition() -
-                        //  modules[i].getPosition()));
-                        modules[i].magnetDetected(); // update position to the modules
-                        // magnet position
+                        modules[i].magnetDetected(); // update position to the modules magnet position
                         resetLatches[i] = true;
                     }
                 } else if (resetLatches[i] == true) {
@@ -282,16 +283,15 @@ void SplitFlapDisplay::moveTo(int targetPositions[], float speed, bool releaseMo
                 }
             }
             isFinished = checkAllFalse(needsStepping, numModules);
-            lastSensorCheckTime = currentTime; // recall micros because for loop may
-            // take a moment to execute
+            lastSensorCheckTime = currentTime; // recall micros because for loop may take a moment to execute
         }
     }
     if (releaseMotors) {
         delay(startStopDelay); // allow all motors time to settle
         stopMotors();
+        updateShiftRegisters(); // <-- NEW: Push the final "all off" states to the 595s
     }
 }
-
 bool SplitFlapDisplay::checkAllFalse(bool array[], int size) {
     for (int i = 0; i < size; i++) {
         if (array[i] == true) {
@@ -317,4 +317,28 @@ void SplitFlapDisplay::stopMotors() {
 
 void SplitFlapDisplay::setMqtt(SplitFlapMqtt *mqttHandler) {
     mqtt = mqttHandler;
+}
+
+
+void SplitFlapDisplay::updateShiftRegisters() {
+    digitalWrite(latchOutPin, LOW);
+    
+    // Shift out data. The last module in the chain needs to be sent FIRST.
+    for (int i = numModules - 1; i >= 0; i--) {
+        SPI.transfer(modules[i].getMotorState());
+    }
+    
+    digitalWrite(latchOutPin, HIGH);
+}
+
+void SplitFlapDisplay::readShiftRegisters() {
+    // Pulse the load pin to capture inputs into the 74HC165
+    digitalWrite(latchInPin, LOW);
+    delayMicroseconds(5); 
+    digitalWrite(latchInPin, HIGH);
+
+    // Read in data. The module closest to the ESP outputs its data FIRST.
+    for (int i = 0; i < numModules; i++) {
+        sr_inputs[i] = SPI.transfer(0x00);
+    }
 }
