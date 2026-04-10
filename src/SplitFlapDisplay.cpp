@@ -12,7 +12,7 @@ void SplitFlapDisplay::init() {
     pinMode(latchInPin, OUTPUT);
     digitalWrite(latchOutPin, HIGH);
     digitalWrite(latchInPin, HIGH);
-    SPI.begin(); // Starts hardware SPI on pins 23, 19, 18
+    SPI.begin(4, 5, 6, -1); // SCK=4, MISO=5, MOSI=6, SS not used (-1)
 
     numModules = settings.getInt("moduleCount");
     stepsPerRot = settings.getInt("stepsPerRot");

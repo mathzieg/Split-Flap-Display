@@ -62,10 +62,14 @@ class SplitFlapDisplay {
 
     uint8_t sr_inputs[MAX_MODULES];
 
-    // Standard ESP32 SPI uses: MOSI=23, MISO=19, SCK=18. 
-    // Set your latch pins here:
-    int latchOutPin = 5;  // RCLK for 74HC595 (Outputs)
-    int latchInPin = 17;  // PL for 74HC165 (Inputs)
+    // ESP32-C3 Super Mini Hardware SPI Pins:
+    // MOSI = 6
+    // MISO = 5
+    // SCK  = 4
+
+    // Recommended Latch Pin updates:
+    int latchOutPin = 7;  // RCLK for 74HC595
+    int latchInPin  = 10; // PL for 74HC165 (or any available pin like 2 or 3)
 
     void updateShiftRegisters();
     void readShiftRegisters();
