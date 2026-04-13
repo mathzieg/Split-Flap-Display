@@ -70,6 +70,6 @@ void SplitFlapModule::step(bool updatePosition) {
 }
 
 bool SplitFlapModule::isMagnetDetected(uint8_t inputByte) {
-    // Check bit 0 (D0 on the 74HC165). Assuming active LOW.
-    return (inputByte & 0x01) == 0; 
+    // Check bit 1 (D1 on the 74HC165). Assuming active LOW.
+    return (inputByte & 0x02) == 0; 
 }

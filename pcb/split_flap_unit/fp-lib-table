@@ -1,0 +1,5 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "ULN2003D1013TR")(type "KiCad")(uri "${KIPRJMOD}/lib/ULN2003D1013TR")(options "")(descr ""))
+  (lib (name "ESP32-C3_SUPERMINI_SMD")(type "KiCad")(uri "${KIPRJMOD}/lib/ESP32-C3_SUPERMINI_SMD")(options "")(descr ""))
+)

@@ -1,0 +1,14 @@
+Designator,Val,Package,Mid X,Mid Y,Rotation,Layer
+C1,10uF 1206 12v,C_1206_3216Metric_Pad1.33x1.80mm_HandSolder,158.385,-113.11,-90.0,top
+C2,0.1uF,C_0805_2012Metric_Pad1.18x1.45mm_HandSolder,160.15,-103.725,-90.0,top
+C3,0.1uF,C_0805_2012Metric_Pad1.18x1.45mm_HandSolder,175.9,-110.3125,-90.0,top
+C4,0.1uF,C_0805_2012Metric_Pad1.18x1.45mm_HandSolder,178.85,-92.65,0.0,top
+IC1,ULN2003D1013TR,SOIC-16_3.9x9.9mm_P1.27mm,171.885,-96.038,90.0,top
+J1,Main Bus MCU side,PinHeader_1x08_P2.54mm_Horizontal,155.0,-104.89,180.0,top
+J2,Motor,JST_XH_B5B-XH-AM_1x05_P2.50mm_Vertical,173.525,-88.1125,0.0,top
+J3,Hall,JST_XH_B3B-XH-AM_1x03_P2.50mm_Vertical,155.825,-88.2875,0.0,top
+J4,Main Bus END side,PinSocket_1x08_P2.54mm_Horizontal,179.0,-104.89,180.0,top
+R1,10k,R_0805_2012Metric_Pad1.20x1.40mm_HandSolder,156.0,-92.5,180.0,top
+R2,10k,R_0805_2012Metric_Pad1.20x1.40mm_HandSolder,186.15,-92.375,90.0,top
+U1,74HC595,SOIC-16_3.9x9.9mm_P1.27mm,171.4125,-104.7,-90.0,top
+U3,74HC165,SOIC-16_3.9x9.9mm_P1.27mm,161.8,-96.6125,180.0,top

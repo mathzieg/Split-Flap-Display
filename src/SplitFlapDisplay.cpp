@@ -268,6 +268,7 @@ void SplitFlapDisplay::moveTo(int targetPositions[], float speed, bool releaseMo
             // <-- NEW: Read all 74HC165 inputs at once
             readShiftRegisters();
 
+
             // check every modules sensor
             for (int i = 0; i < numModules; i++) {
                 
@@ -275,8 +276,13 @@ void SplitFlapDisplay::moveTo(int targetPositions[], float speed, bool releaseMo
                 if (needsStepping[i] && modules[i].isMagnetDetected(sr_inputs[i])) { 
                     
                     if (! resetLatches[i]) {
+
+                        Serial.print("Module "); Serial.print(i); 
+                        Serial.print(" detected magnet at step: "); Serial.println(modules[i].getPosition());
+
                         modules[i].magnetDetected(); // update position to the modules magnet position
                         resetLatches[i] = true;
+
                     }
                 } else if (resetLatches[i] == true) {
                     resetLatches[i] = false;
